@@ -141,8 +141,9 @@ class CacheSimulator {
         }
 
         let isHit = false;
-        let missType = null;
+        let missType = 'None';
         let wayIndex = -1;
+        let l2Hit = false; // Initialize l2Hit
 
         if (hitIndex !== -1) {
             // HIT
@@ -181,6 +182,7 @@ class CacheSimulator {
 
             if (l2HitIndex !== -1) {
                 this.l2.hits++;
+                l2Hit = true; // Set L2 Hit flag
                 l2Set[l2HitIndex].lruCounter = this.currentTime;
                 // Data comes from L2 to L1
                 // console.log(`L1 Miss, L2 Hit for address ${address.toString(16)}`);
@@ -242,7 +244,7 @@ class CacheSimulator {
             }
         }
 
-        this.calculatePower(isHit);
+        this.calculatePower(isHit, type);
 
         this.lastResult = {
             isHit,
@@ -252,7 +254,8 @@ class CacheSimulator {
             tag,
             energy: this.lastAccessEnergy,
             accessType: type,
-            data: (type === 'Read' && isHit) ? set[wayIndex].data : value // Return data on read hit
+            data: (type === 'Read' && isHit) ? set[wayIndex].data : value, // Return data on read hit
+            l2Hit: l2Hit // Pass L2 hit status
         };
         return this.lastResult;
     }
@@ -277,13 +280,46 @@ class CacheSimulator {
         return lruIndex;
     }
 
-    calculatePower(isHit) {
-        const voltageFactor = this.voltage * this.voltage;
-        const staticPower = (this.powerParams.staticPower * (this.cacheSize / 1024)) * voltageFactor;
+    calculatePower(isHit, accessType) {
+        // Accurate Energy Model based on CACTI principles (45nm Tech Node assumption)
+        // E = C * V^2
+        // We estimate Capacitance (C) based on number of bits switched.
 
+        const voltageFactor = this.voltage * this.voltage; // V^2 scaling
+
+        // Constants (approximate for 45nm)
+        const E_bit_access = 5; // pJ per bit (read/write avg)
+        const E_tag_compare = 2; // pJ per bit comparison
+        const P_leak_per_byte = 0.5; // nW per byte static leakage
+
+        // 1. Static Power (Leakage)
+        // Proportional to total memory size (Cache Size + Tag Store)
+        const totalTagBits = this.numSets * this.associativity * (32 - Math.log2(this.numSets) - Math.log2(this.blockSize));
+        const totalSizeBytes = this.cacheSize + (totalTagBits / 8);
+        const staticPower = (totalSizeBytes * P_leak_per_byte) * this.voltage; // Linear with V for leakage (simplified)
+
+        // 2. Dynamic Energy
         let dynamicEnergy = 0;
-        if (isHit) dynamicEnergy = 5 * voltageFactor;
-        else dynamicEnergy = this.powerParams.missPenaltyPower * voltageFactor;
+
+        // A. Tag Lookup Energy (Happens on every access)
+        // We read tags from all ways in the set (Parallel Access)
+        const currentTagBits = 32 - Math.log2(this.numSets) - Math.log2(this.blockSize);
+        const tagEnergy = this.associativity * currentTagBits * E_tag_compare;
+
+        // B. Data Access Energy
+        let dataEnergy = 0;
+        if (isHit) {
+            // On Hit, we access the data block
+            // Read is cheaper than Write
+            const factor = (accessType === 'Write') ? 2.0 : 1.0;
+            dataEnergy = (this.blockSize * 8) * E_bit_access * factor;
+        } else {
+            // On Miss, we pay the penalty of accessing lower level (simulated here as fixed penalty)
+            // Plus we eventually write the new block into L1
+            dataEnergy = (this.blockSize * 8) * E_bit_access * 1.5; // Fill penalty
+        }
+
+        dynamicEnergy = (tagEnergy + dataEnergy) * voltageFactor;
 
         this.lastAccessEnergy = dynamicEnergy + staticPower;
 
@@ -453,10 +489,7 @@ const app = {
         this.addChatMessage("You have been logged out. Please log in to continue.", 'bot');
     },
 
-    toggleTheoryModal() {
-        const overlay = document.getElementById('theoryOverlay');
-        overlay.classList.toggle('hidden');
-    },
+
 
     toggleTheme() {
         const isDark = document.body.getAttribute('data-theme') === 'dark';
@@ -588,6 +621,9 @@ const app = {
 
         // Init CPU Grid
         this.initVisualGridCPU();
+
+        // Init Help System
+        this.initHelpSystem();
     },
 
     initVisualGridL2(sim) {
@@ -632,20 +668,35 @@ const app = {
     },
 
     initVisualGridCPU() {
-        const container = document.getElementById('cpuRegisters');
-        if (!container) return;
-        container.innerHTML = '';
+        const grid = document.getElementById('cpuRegisters');
+        if (!grid) return;
 
-        // x0 is always 0
+        grid.innerHTML = '';
+        const abiNames = [
+            'zero', 'ra', 'sp', 'gp', 'tp', 't0', 't1', 't2',
+            's0/fp', 's1', 'a0', 'a1', 'a2', 'a3', 'a4', 'a5',
+            'a6', 'a7', 's2', 's3', 's4', 's5', 's6', 's7',
+            's8', 's9', 's10', 's11', 't3', 't4', 't5', 't6'
+        ];
+
         for (let i = 0; i < 32; i++) {
-            const reg = document.createElement('div');
-            reg.className = 'register';
-            reg.id = `reg-x${i}`;
-            reg.innerHTML = `
-                <div class="reg-name">x${i}</div>
-                <div class="reg-val">0x00000000</div>
-            `;
-            container.appendChild(reg);
+            const cell = document.createElement('div');
+            cell.className = 'register-cell';
+            cell.id = `reg-${i}`;
+
+            // Header: xN + ABI Name
+            const header = document.createElement('div');
+            header.className = 'reg-name';
+            header.innerHTML = `<span>x${i}</span><span class="reg-abi">${abiNames[i]}</span>`;
+
+            // Value
+            const val = document.createElement('div');
+            val.className = 'reg-val';
+            val.textContent = '0x00000000';
+
+            cell.appendChild(header);
+            cell.appendChild(val);
+            grid.appendChild(cell);
         }
     },
 
@@ -671,15 +722,16 @@ const app = {
 
         // Randomly update a register to simulate activity
         if (this.stepIndex > 0) {
-            const randReg = Math.floor(Math.random() * 31) + 1; // x1-x31
-            const regEl = document.querySelector(`#reg-x${randReg} .reg-val`);
-            if (regEl) {
-                const val = Math.floor(Math.random() * 0xFFFFFFFF);
-                regEl.textContent = '0x' + val.toString(16).toUpperCase().padStart(8, '0');
-                // Flash effect
-                const regBox = document.getElementById(`reg-x${randReg}`);
-                regBox.style.borderColor = 'var(--accent-color)';
-                setTimeout(() => regBox.style.borderColor = 'transparent', 500);
+            const regIndex = Math.floor(Math.random() * 31) + 1; // x1-x31
+            const val = Math.floor(Math.random() * 0xFFFFFFFF);
+
+            const cell = document.getElementById(`reg-${regIndex}`);
+            if (cell) {
+                const valDiv = cell.querySelector('.reg-val');
+                if (valDiv) valDiv.textContent = `0x${val.toString(16).padStart(8, '0')}`;
+
+                cell.classList.add('changed');
+                setTimeout(() => cell.classList.remove('changed'), 500);
             }
         }
     },
@@ -1057,6 +1109,72 @@ const app = {
         });
     },
 
+    initHelpSystem() {
+        const helpContent = {
+            'config': {
+                title: 'Cache Configuration',
+                formula: 'Size = Sets × Ways × BlockSize',
+                desc: 'Configure the geometry of the cache. Changing these values affects the Hit Rate and Energy consumption.',
+                factors: ['Cache Size: Total capacity', 'Block Size: Data chunk size', 'Associativity: Ways per set']
+            },
+            'hitRate': {
+                title: 'Hit Rate',
+                formula: 'Hit Rate = Hits / Total Accesses',
+                desc: 'The percentage of memory accesses found in the cache. A higher hit rate means better performance.',
+                factors: ['Capacity Misses: Cache too small', 'Conflict Misses: Set full', 'Compulsory Misses: First access']
+            },
+            'energy': {
+                title: 'Energy Consumption',
+                formula: 'E = (E_tag + E_data) × V²',
+                desc: 'Total energy consumed by cache operations. Includes dynamic power (switching) and static power (leakage).',
+                factors: ['Voltage (V): Quadratic impact', 'Associativity: More tag checks', 'Size: More leakage']
+            },
+            'amat': {
+                title: 'AMAT',
+                formula: 'Hit Time + (Miss Rate × Miss Penalty)',
+                desc: 'Average Memory Access Time. The average time it takes to fetch data.',
+                factors: ['Hit Time: L1 access latency', 'Miss Penalty: Time to fetch from RAM']
+            }
+        };
+
+        const overlay = document.getElementById('tooltipOverlay');
+        const title = document.getElementById('tooltipTitle');
+        const formula = document.getElementById('tooltipFormula');
+        const desc = document.getElementById('tooltipDesc');
+        const factors = document.getElementById('tooltipFactors');
+
+        if (!overlay) return;
+
+        // Close on click outside
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) overlay.classList.add('hidden');
+        });
+
+        document.querySelectorAll('.tooltip-trigger').forEach(trigger => {
+            trigger.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const key = trigger.dataset.tooltip;
+                const data = helpContent[key];
+
+                if (data) {
+                    title.textContent = data.title;
+                    formula.textContent = data.formula;
+                    desc.textContent = data.desc;
+
+                    factors.innerHTML = '';
+                    data.factors.forEach(f => {
+                        const div = document.createElement('div');
+                        div.className = 'factor-tag';
+                        div.textContent = f;
+                        factors.appendChild(div);
+                    });
+
+                    overlay.classList.remove('hidden');
+                }
+            });
+        });
+    },
+
     initEventListeners() {
         // Helper to safely add listener
         const addListener = (id, event, handler) => {
@@ -1073,9 +1191,8 @@ const app = {
         addListener('logoutBtn', 'click', () => this.handleLogout());
 
         // Theory
-        addListener('theoryBtn', 'click', () => this.toggleTheoryModal());
-        const closeModal = document.querySelector('.close-modal');
-        if (closeModal) closeModal.addEventListener('click', () => this.toggleTheoryModal());
+        // Theory (Handled by link to theory.html)
+
 
         // Simulation Controls
         addListener('runSimulation', 'click', () => this.runAll());
@@ -1177,9 +1294,10 @@ const app = {
 
         saveKeyBtn.addEventListener('click', () => {
             const key = keyInput.value.trim();
+
             if (key) {
                 localStorage.setItem('gemini_api_key', key);
-                this.addChatMessage("API Key saved! I am now powered by Gemini. 🚀", 'bot');
+                this.addChatMessage(`Settings saved! Powered by Gemini 2.0 Flash ⚡`, 'bot');
                 settingsPanel.classList.add('hidden');
             }
         });
@@ -1257,12 +1375,14 @@ const app = {
             return response;
         } catch (error) {
             console.warn("Gemini API failed, falling back to local bot:", error);
-            return this.getLocalBotResponse(input) + "\n\n(Fallback: API Error)";
+            return this.getLocalBotResponse(input) + `\n\n(⚠️ API Error: ${error.message})`;
         }
     },
 
     async callGeminiAPI(prompt, apiKey) {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+        // Hardcoded to Gemini 2.0 Flash as requested
+        const model = 'gemini-2.0-flash';
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
         const systemContext = `
             You are TUMmy, an expert AI tutor for the Technical University of Munich (TUM) students.
@@ -1298,7 +1418,8 @@ const app = {
         });
 
         if (!response.ok) {
-            throw new Error(`API Error: ${response.statusText}`);
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(`API Error: ${response.status} ${response.statusText} - ${JSON.stringify(errorData)}`);
         }
 
         const data = await response.json();
@@ -1338,23 +1459,40 @@ const app = {
     },
 
     animateDataFlow(res) {
-        const cpuCacheBus = document.querySelector('.cpu-cache .arrow');
-        const cacheRamBus = document.querySelector('.cache-ram .arrow');
+        const busL1 = document.querySelector('.bus-l1 .bus-arrow');
+        const busL2 = document.querySelector('.bus-l2 .bus-arrow');
+        const busRam = document.querySelector('.bus-ram .bus-arrow'); // Need to add this to HTML if missing
 
-        // Reset animations
-        cpuCacheBus.classList.remove('anim-left', 'anim-right');
-        cacheRamBus.classList.remove('anim-left', 'anim-right');
-        void cpuCacheBus.offsetWidth; // Trigger reflow
+        // Reset all
+        [busL1, busL2, busRam].forEach(el => {
+            if (el) {
+                el.classList.remove('anim-left', 'anim-right');
+                void el.offsetWidth; // Trigger reflow
+            }
+        });
 
         if (res.isHit) {
-            // Hit: Cache -> CPU
-            cpuCacheBus.classList.add('anim-left');
-        } else {
-            // Miss: RAM -> Cache -> CPU
-            cacheRamBus.classList.add('anim-left');
+            // L1 Hit: L1 -> CPU
+            if (busL1) busL1.classList.add('anim-left');
+        } else if (res.l2Hit) {
+            // L2 Hit: L2 -> L1 -> CPU
+            if (busL2) busL2.classList.add('anim-left');
             setTimeout(() => {
-                cpuCacheBus.classList.add('anim-left');
-            }, 1000);
+                if (busL1) busL1.classList.add('anim-left');
+            }, 600);
+        } else {
+            // RAM Hit: RAM -> L2 -> L1 -> CPU
+            // Assuming we have a RAM bus arrow. If not, we'll just start at L2.
+            // Let's check if we have a RAM bus in HTML.
+            // If not, we can just animate L2 -> L1 -> CPU with a longer delay to simulate RAM fetch.
+
+            // Simulating RAM fetch delay
+            setTimeout(() => {
+                if (busL2) busL2.classList.add('anim-left');
+                setTimeout(() => {
+                    if (busL1) busL1.classList.add('anim-left');
+                }, 600);
+            }, 600);
         }
     }
 };

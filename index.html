@@ -19,21 +19,17 @@
     <div class="app-container">
         <header class="glass-panel">
             <div class="header-content">
-                <div class="logo-area">
-                    <div class="logo-icon">
-                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M4 6H20M4 12H20M4 18H20" stroke="currentColor" stroke-width="2"
-                                stroke-linecap="round" />
-                            <path d="M8 4V20M16 4V20" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                stroke-dasharray="4 4" />
-                        </svg>
-                    </div>
+                <div class="header-left">
+                    <a href="https://www.tum.de" target="_blank" class="logo-link">
+                        <img src="tum_logo.png" alt="TUM Logo" class="header-logo">
+                    </a>
                     <h1>Cache Simulator <span class="version">v2.0</span></h1>
                 </div>
                 <div class="header-controls">
-                    <button id="theoryBtn" class="secondary-btn small-btn">
+                    <a href="theory.html" class="secondary-btn small-btn"
+                        style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 5px;">
                         <span class="icon">📚</span> Theory
-                    </button>
+                    </a>
                     <button id="logoutBtn" class="secondary-btn small-btn" style="margin-left: 5px;">
                         <span class="icon">🚪</span> Logout
                     </button>
@@ -130,20 +126,30 @@
                     <button class="btn-back" onclick="app.router.navigate('system')">← Back to System</button>
                     <h2>CPU Core & Registers</h2>
                 </div>
-                <div class="cpu-container glass-panel">
-                    <div class="cpu-status">
+                <div class="cpu-layout">
+                    <!-- Left Column: Control Path -->
+                    <div class="cpu-control-path glass-panel">
+                        <h3>Control Unit</h3>
                         <div class="reg-box pc-box">
                             <div class="label">Program Counter (PC)</div>
-                            <div class="value" id="cpu-pc">0x1000</div>
+                            <div class="value mono" id="cpu-pc">0x0000</div>
                         </div>
                         <div class="reg-box ir-box">
-                            <div class="label">Instruction</div>
-                            <div class="value" id="cpu-ir">NOP</div>
+                            <div class="label">Current Instruction</div>
+                            <div class="value mono" id="cpu-ir">NOP</div>
+                        </div>
+                        <div class="alu-box">
+                            <div class="label">ALU Status</div>
+                            <div class="value">Ready</div>
                         </div>
                     </div>
-                    <h3>General Purpose Registers (x0 - x31)</h3>
-                    <div class="registers-grid" id="cpuRegisters">
-                        <!-- Populated by JS -->
+
+                    <!-- Right Column: Data Path (Registers) -->
+                    <div class="cpu-data-path glass-panel">
+                        <h3>Register File (x0 - x31)</h3>
+                        <div class="registers-grid" id="cpuRegisters">
+                            <!-- Populated by JS -->
+                        </div>
                     </div>
                 </div>
             </section>
@@ -415,6 +421,8 @@ s</textarea>
             <div id="chatSettingsPanel" class="chat-settings hidden">
                 <label for="geminiKey">Google Gemini API Key:</label>
                 <input type="password" id="geminiKey" placeholder="Enter API Key">
+                <p class="tiny-text">Using Model: <strong>Gemini 2.0 Flash</strong></p>
+
                 <button id="saveKeyBtn" class="btn-primary small-btn">Save</button>
                 <p class="tiny-text">Key is stored locally in your browser.</p>
             </div>
@@ -457,10 +465,8 @@ s</textarea>
         <div id="loginOverlay" class="login-overlay">
             <div class="login-card glass-panel">
                 <div class="login-header">
-                    <div class="tum-logo">
-                        <span style="color: #3070b3; font-weight: bold; font-size: 24px;">TUM</span>
-                    </div>
-                    <h2>Student Access</h2>
+                    <img src="tum_logo.png" alt="TUM Logo" class="login-logo">
+                    <h2>TUM Student Login</h2>
                     <p>Please log in with your university email to access the simulator.</p>
                 </div>
                 <div class="login-form">
@@ -476,66 +482,7 @@ s</textarea>
             </div>
         </div>
 
-        <!-- Theory Modal -->
-        <div id="theoryOverlay" class="theory-overlay hidden">
-            <div class="theory-card glass-panel">
-                <div class="theory-header">
-                    <h2>Cache Architecture Theory</h2>
-                    <button id="closeTheory" class="icon-btn">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2">
-                            <line x1="18" y1="6" x2="6" y2="18"></line>
-                            <line x1="6" y1="6" x2="18" y2="18"></line>
-                        </svg>
-                    </button>
-                </div>
-                <div class="theory-content">
-                    <div class="theory-section">
-                        <h3>1. The Memory Hierarchy</h3>
-                        <p>Fast memory is expensive, and cheap memory is slow. Caches bridge this gap by storing
-                            frequently accessed data closer to the CPU.</p>
-                        <div class="diagram-placeholder">
-                            [CPU] &harr; [L1 Cache] &harr; [L2 Cache] &harr; [Main Memory (DRAM)]
-                        </div>
-                    </div>
-                    <div class="theory-section">
-                        <h3>2. Mapping Policies</h3>
-                        <ul>
-                            <li><strong>Direct Mapped:</strong> Each block maps to exactly one cache line. Simple but
-                                prone to conflicts.</li>
-                            <li><strong>Set Associative:</strong> Each block maps to a set of N lines. Reduces conflicts
-                                but increases complexity.</li>
-                            <li><strong>Fully Associative:</strong> A block can go anywhere. No conflict misses, but
-                                expensive to search.</li>
-                        </ul>
-                    </div>
-                    </ul>
-                </div>
-                <div class="theory-section">
-                    <h3>4. Write Policies</h3>
-                    <ul>
-                        <li><strong>Write-Through:</strong> Data is written to both cache and main memory. Safe but
-                            slow.</li>
-                        <li><strong>Write-Back:</strong> Data is written only to cache. Memory is updated only when the
-                            block is replaced (Dirty Bit). Faster.</li>
-                    </ul>
-                </div>
-                <div class="theory-section">
-                    <h3>5. Glossary</h3>
-                    <ul>
-                        <li><strong>Block (Line):</strong> The unit of data transfer between memory and cache.</li>
-                        <li><strong>Tag:</strong> High-order bits used to identify the block.</li>
-                        <li><strong>Index:</strong> Bits used to select the Set.</li>
-                        <li><strong>Offset:</strong> Bits used to select the byte within the block.</li>
-                    </ul>
-                </div>
-                <div class="theory-section">
-                    <h3>6. RISC-V Context</h3>
-                    <p>RISC-V processors often use separate I-Cache and D-Cache (Harvard Architecture). Instructions
-                        like <code>fence.i</code> are used to ensure consistency when modifying code in memory.</p>
-                </div>
-            </div>
-        </div>
+        <!-- Theory Modal Removed (Moved to theory.html) -->
     </div>
 
     </div>

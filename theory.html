@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cache Theory & Guide - TUM Simulator</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* Theory Page Specific Styles */
+        body {
+            overflow-y: auto;
+            /* Allow scrolling */
+            height: auto;
+            padding-bottom: 50px;
+        }
+
+        .theory-container {
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+
+        .theory-header-page {
+            text-align: center;
+            margin-bottom: 40px;
+            color: var(--text-primary);
+        }
+
+        .theory-header-page h1 {
+            font-size: 3rem;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, var(--accent-color), #2980b9);
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .chapter {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 40px;
+            margin-bottom: 40px;
+            box-shadow: var(--glass-shadow);
+        }
+
+        .chapter h2 {
+            color: var(--accent-color);
+            border-bottom: 2px solid rgba(0, 0, 0, 0.1);
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+
+        .chapter h3 {
+            margin-top: 30px;
+            margin-bottom: 15px;
+            color: var(--text-primary);
+        }
+
+        .chapter p,
+        .chapter li {
+            font-size: 1.1rem;
+            line-height: 1.6;
+            color: var(--text-secondary);
+            margin-bottom: 15px;
+        }
+
+        .concept-box {
+            background: rgba(48, 112, 179, 0.1);
+            border-left: 4px solid var(--accent-color);
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .back-nav {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 100;
+        }
+
+        .btn-home {
+            background: var(--accent-color);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: bold;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            transition: transform 0.2s;
+        }
+
+        .btn-home:hover {
+            transform: translateY(-2px);
+        }
+
+        code {
+            background: rgba(0, 0, 0, 0.05);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Fira Code', monospace;
+            color: #e17055;
+        }
+
+        .resource-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+
+        .resource-card {
+            background: rgba(255, 255, 255, 0.5);
+            padding: 20px;
+            border-radius: 12px;
+            text-decoration: none;
+            color: var(--text-primary);
+            border: 1px solid transparent;
+            transition: all 0.3s;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .resource-card:hover {
+            background: white;
+            transform: translateY(-5px);
+            border-color: var(--accent-color);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+        }
+
+        .resource-card strong {
+            color: var(--accent-color);
+            font-size: 1.2rem;
+            margin-bottom: 8px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <nav class="back-nav">
+        <a href="index.html" class="btn-home">← Back to Simulator</a>
+    </nav>
+
+    <div class="theory-container">
+        <header class="theory-header-page">
+            <h1>Computer Architecture Theory</h1>
+            <p>A comprehensive guide to Caches, RISC-V, and Memory Systems.</p>
+        </header>
+
+        <!-- Chapter 1: Memory Hierarchy -->
+        <section class="chapter">
+            <h2>1. The Memory Hierarchy</h2>
+            <p>In modern computer systems, we want memory to be <strong>fast</strong>, <strong>large</strong>, and
+                <strong>cheap</strong>. However, no single technology satisfies all three.
+            </p>
+
+            <div class="concept-box">
+                <strong>The Principle of Locality:</strong> Programs tend to access a relatively small portion of their
+                address space at any instant of time.
+                <ul>
+                    <li><strong>Temporal Locality:</strong> If an item is referenced, it will tend to be referenced
+                        again soon (e.g., loops).</li>
+                    <li><strong>Spatial Locality:</strong> If an item is referenced, items whose addresses are close by
+                        will tend to be referenced soon (e.g., arrays).</li>
+                </ul>
+            </div>
+
+            <p>To exploit this, we build a hierarchy:</p>
+            <ul>
+                <li><strong>Registers (CPU):</strong> Instant access, very small (32 words in RISC-V).</li>
+                <li><strong>L1 Cache:</strong> Very fast (1-4 cycles), small (KB), integrated into CPU core.</li>
+                <li><strong>L2 Cache:</strong> Fast (10-20 cycles), medium (MB), shared or private.</li>
+                <li><strong>Main Memory (DRAM):</strong> Slow (100+ cycles), large (GB).</li>
+                <li><strong>Disk/SSD:</strong> Very slow (millions of cycles), huge (TB).</li>
+            </ul>
+        </section>
+
+        <!-- Chapter 2: Cache Organization -->
+        <section class="chapter">
+            <h2>2. Cache Organization</h2>
+            <p>How do we find data in the cache? We divide the memory address into three parts: <strong>Tag</strong>,
+                <strong>Index</strong>, and <strong>Offset</strong>.
+            </p>
+
+            <h3>Direct Mapped Cache</h3>
+            <p>Each memory block maps to exactly <strong>one</strong> location in the cache. Simple to build, but prone
+                to <em>Conflict Misses</em>.</p>
+            <code>Index = (Block Address) % (Number of Cache Blocks)</code>
+
+            <h3>Set Associative Cache</h3>
+            <p>Each memory block can go into any of the <strong>N</strong> ways in a specific set. This reduces
+                conflicts but increases complexity (need to search N tags).</p>
+            <code>Set Index = (Block Address) % (Number of Sets)</code>
+
+            <h3>Fully Associative Cache</h3>
+            <p>A block can be placed anywhere in the cache. No conflict misses, but requires searching <em>every</em>
+                tag in the cache (expensive hardware).</p>
+        </section>
+
+        <!-- Chapter 3: Cache Misses (The 3 Cs) -->
+        <section class="chapter">
+            <h2>3. The 3 C's of Cache Misses</h2>
+            <ul>
+                <li><strong>Compulsory (Cold) Miss:</strong> The first access to a block. The block has never been in
+                    the cache before.</li>
+                <li><strong>Capacity Miss:</strong> The cache cannot contain all the blocks needed during execution of a
+                    program. Blocks are discarded and later retrieved.</li>
+                <li><strong>Conflict Miss (Collision):</strong> Multiple blocks compete for the same set. In Direct
+                    Mapped or Set Associative caches.</li>
+            </ul>
+        </section>
+
+        <!-- Chapter 4: Write Policies -->
+        <section class="chapter">
+            <h2>4. Write Policies</h2>
+            <p>What happens when we write data?</p>
+
+            <h3>Write-Through</h3>
+            <p>Data is written to both the cache and the lower-level memory (RAM).
+                <br>✅ Simpler to implement. Data in RAM is always consistent.
+                <br>❌ Slow, as writing to RAM takes time.
+            </p>
+
+            <h3>Write-Back</h3>
+            <p>Data is written only to the cache. The block is marked as <strong>Dirty</strong>. RAM is updated only
+                when the dirty block is replaced.
+                <br>✅ Faster, writes happen at cache speed.
+                <br>❌ More complex. RAM has stale data until writeback.
+            </p>
+        </section>
+
+        <!-- Chapter 5: RISC-V Specifics -->
+        <section class="chapter">
+            <h2>5. RISC-V Context</h2>
+            <p>RISC-V is a modern, open Instruction Set Architecture (ISA).</p>
+            <ul>
+                <li><strong>Load/Store Architecture:</strong> Only <code>lb</code>, <code>lw</code>, <code>sb</code>,
+                    <code>sw</code> instructions access memory. Arithmetic is done in registers.
+                </li>
+                <li><strong>Registers:</strong> 32 General Purpose Registers (x0-x31). <code>x0</code> is hardwired to
+                    0.</li>
+                <li><strong>FENCE.I:</strong> An instruction used to synchronize the Instruction Cache and Data Cache
+                    (essential for self-modifying code or JIT compilers).</li>
+            </ul>
+        </section>
+
+        <!-- Chapter 6: External Resources -->
+        <section class="chapter">
+            <h2>6. External Resources 📚</h2>
+            <p>Deep dive into these topics with our curated list of resources:</p>
+
+            <div class="resource-grid">
+                <a href="https://en.wikipedia.org/wiki/Cache_(computing)" target="_blank" class="resource-card">
+                    <strong>Wikipedia: Cache Memory ↗</strong>
+                    <span>Comprehensive overview of cache history, mapping, and algorithms.</span>
+                </a>
+
+                <a href="https://www.geeksforgeeks.org/cache-memory-in-computer-organization/" target="_blank"
+                    class="resource-card">
+                    <strong>GeeksforGeeks: Organization ↗</strong>
+                    <span>Great for exam preparation and understanding direct/associative mapping.</span>
+                </a>
+
+                <a href="https://riscv.org/technical/specifications/" target="_blank" class="resource-card">
+                    <strong>RISC-V Specifications ↗</strong>
+                    <span>The official documentation for the RISC-V ISA.</span>
+                </a>
+
+                <a href="https://www.tutorialspoint.com/computer_organization/computer_organization_cache_memory.htm"
+                    target="_blank" class="resource-card">
+                    <strong>Tutorialspoint: Basics ↗</strong>
+                    <span>Simple, beginner-friendly explanations of cache concepts.</span>
+                </a>
+
+                <a href="https://cs.stanford.edu/people/eroberts/courses/soco/projects/risc/riscv/" target="_blank"
+                    class="resource-card">
+                    <strong>Stanford RISC-V Guide ↗</strong>
+                    <span>Educational resources on RISC-V architecture.</span>
+                </a>
+            </div>
+        </section>
+    </div>
+
+</body>
+
+</html>
