@@ -57,7 +57,9 @@ class CacheSimulator {
             misses: 0,
             compulsoryMisses: 0,
             capacityMisses: 0,
-            conflictMisses: 0
+            conflictMisses: 0,
+            reads: 0,
+            writes: 0
         };
 
         this.powerStats = {
@@ -128,6 +130,8 @@ class CacheSimulator {
         const setIndex = index % this.numSets;
 
         this.stats.accesses++;
+        if (type === 'Write') this.stats.writes++;
+        else this.stats.reads++;
 
         // Check Hit
         const set = this.cache[setIndex];
@@ -255,8 +259,10 @@ class CacheSimulator {
             energy: this.lastAccessEnergy,
             accessType: type,
             data: (type === 'Read' && isHit) ? set[wayIndex].data : value, // Return data on read hit
-            l2Hit: l2Hit // Pass L2 hit status
+            l2Hit: l2Hit, // Pass L2 hit status
+            address
         };
+        this.lastAccessHit = isHit;
         return this.lastResult;
     }
 
@@ -296,25 +302,30 @@ class CacheSimulator {
         // Proportional to total memory size (Cache Size + Tag Store)
         const totalTagBits = this.numSets * this.associativity * (32 - Math.log2(this.numSets) - Math.log2(this.blockSize));
         const totalSizeBytes = this.cacheSize + (totalTagBits / 8);
-        const staticPower = (totalSizeBytes * P_leak_per_byte) * this.voltage; // Linear with V for leakage (simplified)
+        const staticLeakage = (totalSizeBytes * P_leak_per_byte) * this.voltage; // Linear with V for leakage (simplified)
+        const configuredStatic = this.powerParams.staticPower * (this.cacheSize / 1024); // User provided mW/KB approximation
+        const staticEnergy = (staticLeakage + configuredStatic) * voltageFactor;
 
         // 2. Dynamic Power (Switching)
         // E_dynamic = (Bits_switched * E_bit_access) + E_tag_compare
         // Simplified: Hit = Tag Check + Data Access. Miss = Tag Check + Main Memory Access (Penalty)
         let dynamicEnergy = 0;
+        let penaltyEnergy = 0;
         if (isHit) {
             dynamicEnergy = (this.tagBits * E_tag_compare) + (this.blockSize * 8 * E_bit_access);
         } else {
-            dynamicEnergy = (this.tagBits * E_tag_compare) + (this.powerParams.missPenaltyPower * 100); // Penalty
+            dynamicEnergy = (this.tagBits * E_tag_compare) + (this.blockSize * 8 * E_bit_access * 0.35);
+            penaltyEnergy = this.powerParams.missPenaltyPower * voltageFactor;
         }
 
         // Scale with V^2
         dynamicEnergy *= voltageFactor;
 
-        this.lastAccessEnergy = staticPower + dynamicEnergy; // Energy for this step (pJ)
+        this.lastAccessEnergy = staticEnergy + dynamicEnergy + penaltyEnergy; // Energy for this step (pJ)
 
-        this.powerStats.staticEnergy += staticPower;
+        this.powerStats.staticEnergy += staticEnergy;
         this.powerStats.dynamicEnergy += dynamicEnergy;
+        this.powerStats.missPenaltyEnergy += penaltyEnergy;
         this.powerStats.totalEnergy += this.lastAccessEnergy;
     }
 
@@ -339,6 +350,8 @@ const app = {
     stepIndex: 0,
     addresses: [],
     steps: [], // Store parsed steps with type and value
+    timelineData: { labels: [], hitRate: [], energy: [] },
+    energySeries: { labels: [], static: [], dynamic: [], penalty: [] },
 
     // View Manager (Router)
     router: {
@@ -551,103 +564,248 @@ const app = {
         const isDark = document.body.getAttribute('data-theme') === 'dark';
         const textColor = isDark ? '#ecf0f1' : '#2c3e50';
         const gridColor = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)';
+        const gradientFill = (ctx, color) => {
+            const gradient = ctx.createLinearGradient(0, 0, 0, 160);
+            gradient.addColorStop(0, color);
+            gradient.addColorStop(1, 'rgba(255,255,255,0.05)');
+            return gradient;
+        };
 
         // 1. Energy Chart (Mini Bar)
-        const ctxMain = document.getElementById('mainChart').getContext('2d');
-        this.charts.main = new Chart(ctxMain, {
-            type: 'bar',
-            data: {
-                labels: ['Static', 'Dynamic'],
-                datasets: [{
-                    data: [0, 0],
-                    backgroundColor: ['#0984e3', '#fdcb6e'],
-                    borderRadius: 4,
-                    barThickness: 10
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { display: false }, title: { display: false } },
-                scales: {
-                    y: { display: false, beginAtZero: true },
-                    x: { display: false }
+        const energyCanvas = document.getElementById('energyBarChart');
+        if (energyCanvas) {
+            const ctxMain = energyCanvas.getContext('2d');
+            this.charts.energyBar = new Chart(ctxMain, {
+                type: 'bar',
+                data: {
+                    labels: ['Static', 'Dynamic', 'Penalty'],
+                    datasets: [{
+                        data: [0, 0, 0],
+                        backgroundColor: ['#5dade2', '#fdcb6e', '#e17055'],
+                        borderRadius: 6,
+                        barThickness: 12
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false }, title: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: gridColor }, ticks: { color: textColor } },
+                        x: { grid: { display: false }, ticks: { color: textColor } }
+                    }
                 }
-            }
-        });
+            });
+        }
 
         // 2. AMAT Chart (Mini Line)
-        const ctxAmat = document.getElementById('amatChart').getContext('2d');
-        this.charts.amat = new Chart(ctxAmat, {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: [{
-                    data: [],
-                    borderColor: '#9b59b6',
-                    borderWidth: 2,
-                    pointRadius: 0, // Hide points for cleaner look
-                    tension: 0.4,
-                    fill: true,
-                    backgroundColor: 'rgba(155, 89, 182, 0.1)'
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { display: false }, title: { display: false } },
-                scales: {
-                    y: { display: false, beginAtZero: true },
-                    x: { display: false }
+        const amatCanvas = document.getElementById('amatChart');
+        if (amatCanvas) {
+            const ctxAmat = amatCanvas.getContext('2d');
+            this.charts.amat = new Chart(ctxAmat, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        data: [],
+                        borderColor: '#9b59b6',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        tension: 0.35,
+                        fill: true,
+                        backgroundColor: 'rgba(155, 89, 182, 0.16)'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false }, title: { display: false } },
+                    scales: {
+                        y: { display: false, beginAtZero: true },
+                        x: { display: false }
+                    }
                 }
-            }
-        });
+            });
+        }
 
         // 3. Hit Rate Chart (Mini Pie)
-        const ctxPie = document.getElementById('hitMissPieChart').getContext('2d');
-        this.charts.hitMissPie = new Chart(ctxPie, {
-            type: 'doughnut', // Doughnut looks better small
-            data: {
-                labels: ['Hits', 'Misses'],
-                datasets: [{
-                    data: [0, 0],
-                    backgroundColor: ['#2ecc71', '#e74c3c'],
-                    borderWidth: 0,
-                    cutout: '70%'
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { display: false }, title: { display: false } },
-                layout: { padding: 0 }
-            }
-        });
+        const pieCanvas = document.getElementById('hitMissPieChart');
+        if (pieCanvas) {
+            const ctxPie = pieCanvas.getContext('2d');
+            this.charts.hitMissPie = new Chart(ctxPie, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Hits', 'Misses'],
+                    datasets: [{
+                        data: [0, 0],
+                        backgroundColor: ['#2ecc71', '#e74c3c'],
+                        borderWidth: 0,
+                        cutout: '70%'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false }, title: { display: false } },
+                    layout: { padding: 0 }
+                }
+            });
+        }
 
         // 4. Access Bar Chart (Mini Bar)
-        const ctxBar = document.getElementById('accessBarChart').getContext('2d');
-        this.charts.accessBar = new Chart(ctxBar, {
-            type: 'bar',
-            data: {
-                labels: ['Reads', 'Writes'],
-                datasets: [{
-                    data: [0, 0],
-                    backgroundColor: ['#3498db', '#f1c40f'],
-                    borderRadius: 4,
-                    barThickness: 12
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { display: false }, title: { display: false } },
-                scales: {
-                    y: { display: false, beginAtZero: true },
-                    x: { display: false }
+        const barCanvas = document.getElementById('accessBarChart');
+        if (barCanvas) {
+            const ctxBar = barCanvas.getContext('2d');
+            this.charts.accessBar = new Chart(ctxBar, {
+                type: 'bar',
+                data: {
+                    labels: ['Reads', 'Writes'],
+                    datasets: [{
+                        data: [0, 0],
+                        backgroundColor: ['#3498db', '#f1c40f'],
+                        borderRadius: 4,
+                        barThickness: 12
+                    }]
                 },
-                layout: { padding: 0 }
-            }
-        });
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false }, title: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: gridColor }, ticks: { color: textColor } },
+                        x: { grid: { display: false }, ticks: { color: textColor } }
+                    },
+                    layout: { padding: 0 }
+                }
+            });
+        }
+
+        // 5. Tab Chart (Power / Misses view)
+        const tabCanvas = document.getElementById('tabChart');
+        if (tabCanvas) {
+            const ctxTab = tabCanvas.getContext('2d');
+            this.charts.tab = new Chart(ctxTab, {
+                type: 'bar',
+                data: {
+                    labels: ['Static', 'Dynamic', 'Penalty'],
+                    datasets: [{
+                        label: 'Energy (pJ)',
+                        data: [0, 0, 0],
+                        backgroundColor: ['#5dade2', '#fdcb6e', '#e17055'],
+                        borderRadius: 8
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false }, title: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: gridColor }, ticks: { color: textColor } },
+                        x: { grid: { color: gridColor }, ticks: { color: textColor } }
+                    }
+                }
+            });
+        }
+
+        // 6. Timeline Chart
+        const timelineCanvas = document.getElementById('timelineChart');
+        if (timelineCanvas) {
+            const ctxTimeline = timelineCanvas.getContext('2d');
+            this.charts.timeline = new Chart(ctxTimeline, {
+                data: {
+                    labels: [],
+                    datasets: [
+                        {
+                            label: 'Hit Rate %',
+                            data: [],
+                            borderColor: '#00b894',
+                            backgroundColor: 'rgba(0, 184, 148, 0.18)',
+                            fill: true,
+                            tension: 0.35,
+                            yAxisID: 'y'
+                        },
+                        {
+                            type: 'bar',
+                            label: 'Energy (pJ)',
+                            data: [],
+                            backgroundColor: 'rgba(48, 112, 179, 0.35)',
+                            borderRadius: 6,
+                            yAxisID: 'y1',
+                            barThickness: 12
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { labels: { color: textColor } },
+                        title: { display: false },
+                        tooltip: { mode: 'index', intersect: false }
+                    },
+                    scales: {
+                        y: { beginAtZero: true, max: 100, ticks: { color: textColor }, grid: { color: gridColor } },
+                        y1: {
+                            beginAtZero: true,
+                            position: 'right',
+                            ticks: { color: textColor },
+                            grid: { drawOnChartArea: false }
+                        },
+                        x: { ticks: { color: textColor }, grid: { color: 'transparent' } }
+                    }
+                }
+            });
+        }
+
+        // 7. Power Stacked Chart
+        const powerCanvas = document.getElementById('powerStackedChart');
+        if (powerCanvas) {
+            const ctxPower = powerCanvas.getContext('2d');
+            this.charts.powerStacked = new Chart(ctxPower, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        {
+                            label: 'Static',
+                            data: [],
+                            borderColor: '#5dade2',
+                            backgroundColor: gradientFill(ctxPower, 'rgba(93, 173, 226, 0.35)'),
+                            tension: 0.35,
+                            fill: true,
+                            stack: 'energy'
+                        },
+                        {
+                            label: 'Dynamic',
+                            data: [],
+                            borderColor: '#fdcb6e',
+                            backgroundColor: gradientFill(ctxPower, 'rgba(253, 203, 110, 0.28)'),
+                            tension: 0.35,
+                            fill: true,
+                            stack: 'energy'
+                        },
+                        {
+                            label: 'Penalty',
+                            data: [],
+                            borderColor: '#e17055',
+                            backgroundColor: gradientFill(ctxPower, 'rgba(225, 112, 85, 0.26)'),
+                            tension: 0.35,
+                            fill: true,
+                            stack: 'energy'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { labels: { color: textColor } }, title: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, stacked: true, ticks: { color: textColor }, grid: { color: gridColor } },
+                        x: { ticks: { color: textColor }, grid: { color: 'transparent' } }
+                    }
+                }
+            });
+        }
 
         // Initialize Waveform Canvas
         this.waveformCtx = document.getElementById('signalCanvas').getContext('2d');
@@ -698,9 +856,10 @@ const app = {
         if (this.waveformHistory.length > 50) this.waveformHistory.shift();
 
         // Draw Signals with Labels
-        this.drawSignal(ctx, 'CLK', d => d.clk, 25, '#00cec9');
-        this.drawSignal(ctx, 'HIT', d => d.hit, 65, '#00b894');
-        this.drawSignal(ctx, 'MISS', d => d.miss, 105, '#d63031');
+        const spacing = height / 4;
+        this.drawSignal(ctx, 'CLK', d => d.clk, spacing * 1, '#00cec9');
+        this.drawSignal(ctx, 'HIT', d => d.hit, spacing * 2, '#00b894');
+        this.drawSignal(ctx, 'MISS', d => d.miss, spacing * 3, '#d63031');
     },
 
     drawSignal(ctx, label, getValue, yOffset, color) {
@@ -732,33 +891,27 @@ const app = {
         ctx.fillText(label, 5, yOffset);
     },
 
-    updateCharts() {
+    updateCharts(res) {
         if (!this.sim) return;
 
-        // Update Hit Rate (Small & Large)
-        const hits = this.sim.hits;
-        const misses = this.sim.misses;
+        const stats = this.sim.stats;
+        const power = this.sim.powerStats;
 
         if (this.charts.hitMissPie) {
-            this.charts.hitMissPie.data.datasets[0].data = [hits, misses];
+            this.charts.hitMissPie.data.datasets[0].data = [stats.hits, stats.misses];
             this.charts.hitMissPie.update();
         }
 
-        // Update Energy
-        if (this.charts.main) {
-            // Mock energy values for now based on access count
-            const staticEnergy = this.sim.accesses * 0.5;
-            const dynamicEnergy = (hits * 1.2) + (misses * 5.0);
-            this.charts.main.data.datasets[0].data = [staticEnergy, dynamicEnergy];
-            this.charts.main.update();
+        if (this.charts.energyBar) {
+            this.charts.energyBar.data.datasets[0].data = [power.staticEnergy, power.dynamicEnergy, power.missPenaltyEnergy];
+            this.charts.energyBar.update();
         }
 
-        // Update AMAT
         if (this.charts.amat) {
             const currentAmat = this.sim.calculateAMAT();
-            const label = `Step ${this.sim.accesses}`;
+            const label = `Step ${stats.accesses}`;
 
-            if (this.charts.amat.data.labels.length > 20) {
+            if (this.charts.amat.data.labels.length > 24) {
                 this.charts.amat.data.labels.shift();
                 this.charts.amat.data.datasets[0].data.shift();
             }
@@ -768,18 +921,50 @@ const app = {
             this.charts.amat.update();
         }
 
-        // Update Access Bar
         if (this.charts.accessBar) {
-            // Assuming all are reads for now as we don't track writes explicitly yet
-            this.charts.accessBar.data.datasets[0].data = [this.sim.accesses, 0];
+            this.charts.accessBar.data.datasets[0].data = [stats.reads, stats.writes];
             this.charts.accessBar.update();
+        }
+
+        if (this.charts.timeline && res) {
+            this.charts.timeline.data.labels = this.timelineData.labels;
+            this.charts.timeline.data.datasets[0].data = this.timelineData.hitRate;
+            this.charts.timeline.data.datasets[1].data = this.timelineData.energy;
+            this.charts.timeline.update();
+        }
+
+        if (this.charts.powerStacked) {
+            this.charts.powerStacked.data.labels = this.energySeries.labels;
+            this.charts.powerStacked.data.datasets[0].data = this.energySeries.static;
+            this.charts.powerStacked.data.datasets[1].data = this.energySeries.dynamic;
+            this.charts.powerStacked.data.datasets[2].data = this.energySeries.penalty;
+            this.charts.powerStacked.update();
         }
 
         // Update Waveform
         this.drawWaveform();
     },
 
-    updateChartsTheme() { },
+    updateChartsTheme() {
+        const isDark = document.body.getAttribute('data-theme') === 'dark';
+        const textColor = isDark ? '#ecf0f1' : '#2c3e50';
+        const gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
+
+        Object.values(this.charts).forEach(chart => {
+            if (!chart || !chart.options) return;
+            if (chart.options.scales) {
+                Object.values(chart.options.scales).forEach(scale => {
+                    if (!scale) return;
+                    if (scale.ticks) scale.ticks.color = textColor;
+                    if (scale.grid && scale.grid.drawOnChartArea !== false) scale.grid.color = gridColor;
+                });
+            }
+            if (chart.options.plugins && chart.options.plugins.legend && chart.options.plugins.legend.labels) {
+                chart.options.plugins.legend.labels.color = textColor;
+            }
+            chart.update('none');
+        });
+    },
 
     initSimulator() {
         const config = this.getConfig();
@@ -791,12 +976,23 @@ const app = {
             config.powerParams,
             config.voltage
         );
+        this.timelineData = { labels: [], hitRate: [], energy: [] };
+        this.energySeries = { labels: [], static: [], dynamic: [], penalty: [] };
         this.parseAddressSequence(); // Parse addresses and operations
         this.stepIndex = 0;
         document.querySelector('#resultsTable tbody').innerHTML = '';
 
         // Init Grid
         this.initVisualGrid(this.sim);
+
+        // Update Timeline Scrubber Max
+        const scrubber = document.getElementById('timelineScrubber');
+        if (scrubber) {
+            scrubber.max = this.steps.length;
+            scrubber.value = 0;
+            scrubber.disabled = false;
+        }
+        document.getElementById('totalStepsDisplay').textContent = this.steps.length;
     },
 
     parseAddressSequence() {
@@ -822,6 +1018,10 @@ const app = {
             const row = document.createElement('div');
             row.className = 'set-row';
             row.title = `Set ${i}`;
+            const label = document.createElement('div');
+            label.className = 'set-label';
+            label.textContent = `Set ${i}`;
+            row.appendChild(label);
 
             for (let j = 0; j < sim.associativity; j++) {
                 const block = document.createElement('div');
@@ -843,8 +1043,9 @@ const app = {
         // Init CPU Grid
         this.initVisualGridCPU();
 
-        // Init Help System
+        this.initTheme();
         this.initHelpSystem();
+        this.initPlaybackControls();
     },
 
     initVisualGridL2(sim) {
@@ -862,6 +1063,10 @@ const app = {
             const row = document.createElement('div');
             row.className = 'set-row';
             row.title = `Set ${i}`;
+            const label = document.createElement('div');
+            label.className = 'set-label';
+            label.textContent = `L2-${i}`;
+            row.appendChild(label);
 
             for (let j = 0; j < sim.l2.associativity; j++) {
                 const block = document.createElement('div');
@@ -998,6 +1203,7 @@ const app = {
     },
 
     updateVisualGrid(res) {
+        if (res.setIndex === undefined || res.setIndex < 0) return;
         // Clear previous highlights
         document.querySelectorAll('.cache-block').forEach(b => {
             b.classList.remove('highlight-set', 'flash-hit', 'flash-miss');
@@ -1019,10 +1225,18 @@ const app = {
             if (cacheBlock.valid) {
                 block.classList.remove('empty');
                 block.classList.add('valid');
-                block.textContent = `Tag:${cacheBlock.tag}`;
-                if (cacheBlock.data) {
-                    block.innerHTML += `<div style="font-size:0.7em; color:white;">${cacheBlock.data}</div>`;
-                }
+                const payload = cacheBlock.data !== null && cacheBlock.data !== undefined ? cacheBlock.data : '—';
+                block.innerHTML = `
+                    <div class="block-header">
+                        <span class="tag-label">Tag ${cacheBlock.tag}</span>
+                        <div class="indicators">
+                            <span class="indicator ${res.isHit ? 'on' : ''}"></span>
+                            <span class="indicator ${cacheBlock.dirty ? 'on' : ''}" style="background:${cacheBlock.dirty ? '#e17055' : 'rgba(255,255,255,0.15)'}"></span>
+                        </div>
+                    </div>
+                    <div class="block-data">${payload}</div>
+                    <div class="block-meta">${res.missType && res.missType !== 'None' ? res.missType : (cacheBlock.dirty ? 'Dirty' : 'Clean')}</div>
+                `;
                 if (cacheBlock.dirty) block.classList.add('dirty');
                 else block.classList.remove('dirty');
             }
@@ -1066,6 +1280,7 @@ const app = {
         // Actually, let's just refresh the whole L2 grid for simplicity in this step, 
         // as `access` return value change is risky without more testing.
 
+        if (!this.sim || !this.sim.l2) return;
         const l2Sets = this.sim.l2.sets;
         for (let i = 0; i < l2Sets.length; i++) {
             for (let j = 0; j < l2Sets[i].length; j++) {
@@ -1075,11 +1290,30 @@ const app = {
                     if (l2Block.valid) {
                         block.classList.remove('empty');
                         block.classList.add('valid');
-                        block.textContent = `Tag:${l2Block.tag}`;
+                        const payload = l2Block.data !== null && l2Block.data !== undefined ? l2Block.data : '—';
+                        block.innerHTML = `
+                            <div class="block-header">
+                                <span class="tag-label">Tag ${l2Block.tag}</span>
+                                <div class="indicators">
+                                    <span class="indicator ${l2Block.dirty ? 'on' : ''}" style="background:${l2Block.dirty ? '#e17055' : 'rgba(255,255,255,0.15)'}"></span>
+                                </div>
+                            </div>
+                            <div class="block-data">${payload}</div>
+                            <div class="block-meta">${l2Block.dirty ? 'Dirty' : 'Clean'}</div>
+                        `;
                     } else {
                         block.classList.add('empty');
                         block.classList.remove('valid');
-                        block.textContent = 'Empty';
+                        block.innerHTML = `
+                            <div class="block-header">
+                                <span class="tag-label">EMPTY</span>
+                                <div class="indicators">
+                                    <span class="indicator"></span>
+                                </div>
+                            </div>
+                            <div class="block-data">-</div>
+                            <div class="block-meta">Evicted</div>
+                        `;
                     }
                 }
             }
@@ -1097,17 +1331,81 @@ const app = {
             // Performance: Don't animate every step in Run All
             const wasAnimating = true; // We could disable animation here if we had a flag
 
-            while (this.stepIndex < this.steps.length) {
-                this.processStep(true); // Pass true for batch mode
-            }
-
-            // Final update to ensure everything looks correct
-            this.updateVisualGrid(this.sim.lastResult);
-            this.updateMetrics(this.sim);
+            // Use recursive run for dynamic speed
+            this.isPlaying = true;
+            this.runStepRecursive();
 
         } catch (e) {
             console.error("Simulation Error:", e);
             alert("Simulation error: " + e.message);
+        }
+    },
+
+    runStepRecursive() {
+        if (!this.isPlaying || this.stepIndex >= this.steps.length) {
+            this.isPlaying = false;
+            return;
+        }
+
+        this.processStep();
+
+        // Update Scrubber
+        const scrubber = document.getElementById('timelineScrubber');
+        if (scrubber) scrubber.value = this.stepIndex;
+        document.getElementById('currentStepDisplay').textContent = this.stepIndex;
+
+        // Dynamic Delay
+        const speedSlider = document.getElementById('speedSlider');
+        const delay = speedSlider ? parseInt(speedSlider.value) : 1000;
+
+        setTimeout(() => this.runStepRecursive(), delay);
+    },
+
+    initPlaybackControls() {
+        const scrubber = document.getElementById('timelineScrubber');
+        const speedSlider = document.getElementById('speedSlider');
+        const speedDisplay = document.getElementById('speedDisplay');
+
+        if (scrubber) {
+            scrubber.addEventListener('input', (e) => {
+                const step = parseInt(e.target.value);
+                this.goToStep(step);
+            });
+        }
+
+        if (speedSlider) {
+            speedSlider.addEventListener('input', (e) => {
+                const val = parseInt(e.target.value);
+                speedDisplay.textContent = (val / 1000).toFixed(1) + 's';
+            });
+            speedDisplay.textContent = (parseInt(speedSlider.value) / 1000).toFixed(1) + 's';
+        }
+    },
+
+    goToStep(targetStep) {
+        if (!this.sim) this.initSimulator();
+
+        // Clamp
+        if (targetStep < 0) targetStep = 0;
+        if (targetStep > this.steps.length) targetStep = this.steps.length;
+
+        // If going backward, reset first
+        if (targetStep < this.stepIndex) {
+            this.reset();
+            this.initSimulator(); // Re-init after reset
+        }
+
+        // Fast forward to target
+        // We use batch mode for all steps except the last one to save performance
+        while (this.stepIndex < targetStep) {
+            const isLast = (this.stepIndex === targetStep - 1);
+            this.processStep(!isLast); // Batch mode unless it's the last step
+        }
+
+        // Update UI
+        document.getElementById('currentStepDisplay').textContent = this.stepIndex;
+        if (document.getElementById('timelineScrubber')) {
+            document.getElementById('timelineScrubber').value = this.stepIndex;
         }
     },
 
@@ -1150,14 +1448,14 @@ const app = {
         // but for now let's keep them to ensure "it works" visibly.
         // Maybe skip animation in batch.
         if (!isBatch) {
-            this.updateMetrics(this.sim);
+            this.updateMetrics(this.sim, res);
             this.updateVisualGrid(res);
             this.animateDataFlow(res);
         } else {
             // Only update metrics occasionally or at end? 
             // For small traces, updating every time is fine.
             // Let's just skip animation.
-            this.updateMetrics(this.sim);
+            this.updateMetrics(this.sim, res);
             this.updateVisualGrid(res);
         }
 
@@ -1197,7 +1495,7 @@ const app = {
         document.querySelector('#resultsTable tbody').appendChild(row);
     },
 
-    updateMetrics(sim) {
+    updateMetrics(sim, res) {
         const hitRate = sim.stats.accesses > 0 ? (sim.stats.hits / sim.stats.accesses * 100) : 0;
 
         document.getElementById('hitRateValue').textContent = hitRate.toFixed(1) + '%';
@@ -1205,6 +1503,10 @@ const app = {
         document.getElementById('accessesValue').textContent = sim.stats.accesses;
         document.getElementById('hitsValue').textContent = sim.stats.hits + ' Hits';
         document.getElementById('missesValue').textContent = sim.stats.misses + ' Misses';
+        const l2HitsEl = document.getElementById('l2HitsValue');
+        const l2MissesEl = document.getElementById('l2MissesValue');
+        if (l2HitsEl && sim.l2) l2HitsEl.textContent = sim.l2.hits || 0;
+        if (l2MissesEl && sim.l2) l2MissesEl.textContent = sim.l2.misses || 0;
 
         // AMAT Calculation
         // Assumptions: Hit Time = 1 cycle, Miss Penalty = 100 cycles
@@ -1219,37 +1521,73 @@ const app = {
         const avgPowerEl = document.getElementById('avgPowerValue');
         if (avgPowerEl) avgPowerEl.textContent = avgPower.toFixed(2) + ' pJ/op';
 
+        // Record series for charts
+        this.recordSeries(hitRate, res ? res.energy : 0);
+
         // Update Charts
-        this.updateCharts();
+        this.updateCharts(res);
 
         this.currentSimData = sim;
-        const activeTab = document.querySelector('.tab-btn.active').dataset.tab;
-        if (activeTab !== 'grid') {
+        const activeTabBtn = document.querySelector('.tab-btn.active');
+        const activeTab = activeTabBtn ? activeTabBtn.dataset.tab : 'grid';
+        if (activeTab !== 'grid' && activeTab !== 'movement') {
             this.updateMainChart(activeTab);
         }
     },
 
+    recordSeries(hitRate, energy) {
+        const label = `S${this.stepIndex + 1}`;
+        const maxPoints = 40;
+        const trim = (arr) => {
+            if (arr.length > maxPoints) arr.shift();
+        };
+
+        this.timelineData.labels.push(label);
+        this.timelineData.hitRate.push(parseFloat(hitRate.toFixed(2)));
+        this.timelineData.energy.push(parseFloat(energy.toFixed(2)));
+
+        this.energySeries.labels.push(label);
+        this.energySeries.static.push(this.sim.powerStats.staticEnergy);
+        this.energySeries.dynamic.push(this.sim.powerStats.dynamicEnergy);
+        this.energySeries.penalty.push(this.sim.powerStats.missPenaltyEnergy);
+
+        [this.timelineData.labels, this.timelineData.hitRate, this.timelineData.energy,
+        this.energySeries.labels, this.energySeries.static, this.energySeries.dynamic, this.energySeries.penalty].forEach(trim);
+    },
+
     updateMainChart(type) {
-        if (!this.currentSimData) return;
+        if (!this.currentSimData || !this.charts.tab) return;
         const sim = this.currentSimData;
+        const chart = this.charts.tab;
 
         if (type === 'power') {
-            this.charts.main.data.labels = ['Static', 'Dynamic'];
-            this.charts.main.data.datasets[0].label = 'Energy (pJ)';
-            this.charts.main.data.datasets[0].data = [sim.powerStats.staticEnergy, sim.powerStats.dynamicEnergy];
-            this.charts.main.data.datasets[0].backgroundColor = ['#0984e3', '#fdcb6e'];
+            chart.config.type = 'bar';
+            chart.data.labels = ['Static', 'Dynamic', 'Penalty'];
+            chart.data.datasets = [{
+                type: 'bar',
+                label: 'Energy (pJ)',
+                data: [sim.powerStats.staticEnergy, sim.powerStats.dynamicEnergy, sim.powerStats.missPenaltyEnergy],
+                backgroundColor: ['#5dade2', '#fdcb6e', '#e17055'],
+                borderRadius: 8
+            }];
         } else {
-            this.charts.main.data.labels = ['Compulsory', 'Capacity', 'Conflict'];
-            this.charts.main.data.datasets[0].label = 'Miss Count';
-            this.charts.main.data.datasets[0].data = [sim.stats.compulsoryMisses, sim.stats.capacityMisses, sim.stats.conflictMisses];
-            this.charts.main.data.datasets[0].backgroundColor = ['#a29bfe', '#e17055', '#d63031'];
+            chart.config.type = 'bar';
+            chart.data.labels = ['Compulsory', 'Capacity', 'Conflict'];
+            chart.data.datasets = [{
+                label: 'Miss Count',
+                data: [sim.stats.compulsoryMisses, sim.stats.capacityMisses, sim.stats.conflictMisses],
+                backgroundColor: ['#a29bfe', '#e17055', '#d63031'],
+                borderRadius: 8
+            }];
         }
-        this.charts.main.update();
+        chart.update();
     },
 
     reset() {
         this.sim = null;
         this.stepIndex = 0;
+        this.timelineData = { labels: [], hitRate: [], energy: [] };
+        this.energySeries = { labels: [], static: [], dynamic: [], penalty: [] };
         document.querySelector('#resultsTable tbody').innerHTML = '';
         document.getElementById('hitRateValue').textContent = '0%';
         document.getElementById('energyValue').textContent = '0 pJ';
@@ -1259,6 +1597,19 @@ const app = {
         document.getElementById('amatValue').textContent = '0 cycles';
         const avgPowerEl = document.getElementById('avgPowerValue');
         if (avgPowerEl) avgPowerEl.textContent = '0 pJ/op';
+        const l2HitsEl = document.getElementById('l2HitsValue');
+        const l2MissesEl = document.getElementById('l2MissesValue');
+        if (l2HitsEl) l2HitsEl.textContent = '0';
+        if (l2MissesEl) l2MissesEl.textContent = '0';
+
+        // Reset Scrubber
+        const scrubber = document.getElementById('timelineScrubber');
+        if (scrubber) {
+            scrubber.value = 0;
+            scrubber.disabled = true;
+        }
+        document.getElementById('currentStepDisplay').textContent = '0';
+        document.getElementById('totalStepsDisplay').textContent = '0';
 
         // Clear Grid
         const container = document.getElementById('visualGrid');
@@ -1278,9 +1629,23 @@ const app = {
             this.charts.amat.data.datasets[0].data = [];
             this.charts.amat.update();
         }
-        if (this.charts.main) {
-            this.charts.main.data.datasets[0].data = [0, 0];
-            this.charts.main.update();
+        if (this.charts.energyBar) {
+            this.charts.energyBar.data.datasets[0].data = [0, 0, 0];
+            this.charts.energyBar.update();
+        }
+        if (this.charts.timeline) {
+            this.charts.timeline.data.labels = [];
+            this.charts.timeline.data.datasets.forEach(ds => ds.data = []);
+            this.charts.timeline.update();
+        }
+        if (this.charts.powerStacked) {
+            this.charts.powerStacked.data.labels = [];
+            this.charts.powerStacked.data.datasets.forEach(ds => ds.data = []);
+            this.charts.powerStacked.update();
+        }
+        if (this.charts.tab) {
+            this.charts.tab.data.datasets.forEach(ds => ds.data = []);
+            this.charts.tab.update();
         }
     },
 
@@ -1465,7 +1830,7 @@ const app = {
                     grid.style.fontSize = `${0.8 * scale}rem`;
                     grid.style.gap = `${12 * scale}px`;
                     document.querySelectorAll('.cache-block').forEach(b => {
-                        b.style.height = `${40 * scale}px`;
+                        b.style.height = `${70 * scale}px`;
                         b.style.minWidth = `${40 * scale}px`;
                     });
                 }
@@ -1714,25 +2079,23 @@ const app = {
         // Create a particle element for animation
         const particle = document.createElement('div');
         particle.className = 'data-particle';
-        particle.style.cssText = `
-            position: fixed;
-            width: 12px;
-            height: 12px;
-            background: #00cec9;
-            border-radius: 50%;
-            z-index: 9999;
-            box-shadow: 0 0 8px #00cec9;
-            pointer-events: none;
-            transition: all 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-        `;
+        // Styles are now in CSS for better performance and maintainability
         document.body.appendChild(particle);
 
-        // Define positions (approximate based on UI layout)
-        // We really need to getBoundingClientRect of actual elements
-        const cpuEl = document.querySelector('.cpu-container');
-        const l1El = document.querySelector('.cache-container'); // L1
-        const l2El = document.querySelector('.l2-container');
-        const ramEl = document.querySelector('.ram-container');
+        // Define positions
+        // We target the System View components
+        const cpuEl = document.querySelector('.sys-component.cpu-unit');
+        const l1El = document.querySelector('.sys-component.l1-cache');
+        const l2El = document.querySelector('.sys-component.l2-cache');
+        const ramEl = document.querySelector('.sys-component.ram-unit');
+        const busL1 = document.querySelector('.sys-bus.bus-l1');
+        const busL2 = document.querySelector('.sys-bus.bus-l2');
+        const busRam = document.querySelector('.sys-bus.bus-ram');
+
+        // Fallback to main containers if system view is hidden (though system view is usually visible)
+        // or if we are in a specific view.
+        // Ideally, we should detect which view is active.
+        // For now, let's prioritize the System View elements as they show the flow best.
 
         if (!cpuEl || !l1El) {
             particle.remove();
@@ -1744,58 +2107,86 @@ const app = {
             return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
         };
 
+        const pulse = (el) => {
+            if (!el) return;
+            el.classList.add('glow-loop');
+            setTimeout(() => el.classList.remove('glow-loop'), 1200);
+        };
+
+        const activateBus = (busEl) => {
+            if (!busEl) return;
+            busEl.classList.add('active');
+            setTimeout(() => busEl.classList.remove('active'), 950);
+        };
+
         const cpuPos = getCenter(cpuEl);
         const l1Pos = getCenter(l1El);
         const l2Pos = l2El ? getCenter(l2El) : { x: l1Pos.x + 200, y: l1Pos.y }; // Fallback
         const ramPos = ramEl ? getCenter(ramEl) : { x: l1Pos.x + 400, y: l1Pos.y }; // Fallback
 
-        // Animation Sequence
+        // Animation Sequence (Slower: 1s per hop)
+        // Initial Position
         if (res.isHit) {
             // Hit: L1 -> CPU
             particle.style.left = `${l1Pos.x}px`;
             particle.style.top = `${l1Pos.y}px`;
+            activateBus(busL1);
+            pulse(l1El);
 
             requestAnimationFrame(() => {
                 particle.style.left = `${cpuPos.x}px`;
                 particle.style.top = `${cpuPos.y}px`;
+                pulse(cpuEl);
             });
         } else if (res.l2Hit) {
             // L2 Hit: L2 -> L1 -> CPU
             particle.style.left = `${l2Pos.x}px`;
             particle.style.top = `${l2Pos.y}px`;
+            activateBus(busL2);
+            pulse(l2El);
 
             requestAnimationFrame(() => {
                 particle.style.left = `${l1Pos.x}px`;
                 particle.style.top = `${l1Pos.y}px`;
+                pulse(l1El);
 
                 setTimeout(() => {
                     particle.style.left = `${cpuPos.x}px`;
                     particle.style.top = `${cpuPos.y}px`;
-                }, 600);
+                    pulse(cpuEl);
+                    activateBus(busL1);
+                }, 1000); // 1s delay
             });
         } else {
             // Miss: RAM -> L2 -> L1 -> CPU
             particle.style.left = `${ramPos.x}px`;
             particle.style.top = `${ramPos.y}px`;
+            activateBus(busRam);
+            pulse(ramEl);
 
             requestAnimationFrame(() => {
                 particle.style.left = `${l2Pos.x}px`;
                 particle.style.top = `${l2Pos.y}px`;
+                pulse(l2El);
+                activateBus(busL2);
 
                 setTimeout(() => {
                     particle.style.left = `${l1Pos.x}px`;
                     particle.style.top = `${l1Pos.y}px`;
+                    pulse(l1El);
+                    activateBus(busL1);
 
                     setTimeout(() => {
                         particle.style.left = `${cpuPos.x}px`;
                         particle.style.top = `${cpuPos.y}px`;
-                    }, 600);
-                }, 600);
+                        pulse(cpuEl);
+                    }, 1000); // 1s delay
+                }, 1000); // 1s delay
             });
         }
 
         // Cleanup
-        setTimeout(() => particle.remove(), 2000);
+        setTimeout(() => particle.remove(), 3500);
     },
 };
 

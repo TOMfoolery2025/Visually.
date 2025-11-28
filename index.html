@@ -11,7 +11,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <!-- Using Chart.js for beautiful visualizations -->
@@ -280,6 +280,22 @@ s
                             </button>
                             <button id="resetSimulation" class="secondary-btn">Reset</button>
                         </div>
+
+                        <!-- Playback Controls -->
+                        <div class="playback-controls">
+                            <div class="control-row">
+                                <label for="timelineScrubber">Timeline:</label>
+                                <input type="range" id="timelineScrubber" min="0" max="0" value="0" disabled>
+                                <span class="step-display"><span id="currentStepDisplay">0</span> / <span
+                                        id="totalStepsDisplay">0</span></span>
+                            </div>
+                            <div class="control-row">
+                                <label for="speedSlider">Speed:</label>
+                                <input type="range" id="speedSlider" min="100" max="2000" step="100" value="1000"
+                                    style="direction: rtl">
+                                <span id="speedDisplay">1.0s</span>
+                            </div>
+                        </div>
                 </div>
             </section>
 
@@ -300,15 +316,7 @@ s
                     </div>
                 </div>
 
-                <!-- Card 2: Signal Waveforms -->
-                <div class="metric-card graylog-card wide-card">
-                    <div class="card-header">
-                        <span class="card-label">Signal Waveforms</span>
-                    </div>
-                    <div class="card-body">
-                        <canvas id="signalCanvas" height="120" style="width: 100%;"></canvas>
-                    </div>
-                </div>
+
 
                 <!-- Card 3: Total Energy -->
                 <div class="metric-card graylog-card">
@@ -318,9 +326,9 @@ s
                     </div>
                     <div class="card-body">
                         <div class="big-number" id="energyValue">0 pJ</div>
-                        <div class="sub-text">Avg Power: <span id="avgPowerValue">0 mW</span></div>
+                        <div class="sub-text">Avg Energy/Access: <span id="avgPowerValue">0 pJ</span></div>
                         <div class="chart-mini-container">
-                            <canvas id="mainChart"></canvas>
+                            <canvas id="energyBarChart"></canvas>
                         </div>
                     </div>
                 </div>
@@ -350,12 +358,58 @@ s
                             <span class="stat-item green" id="hitsValue">0 Hits</span>
                             <span class="stat-item red" id="missesValue">0 Misses</span>
                         </div>
+                        <div class="sub-text subtle">L2 assists: <span id="l2HitsValue">0</span> / L2 misses: <span
+                                id="l2MissesValue">0</span></div>
                         <div class="chart-mini-container">
                             <canvas id="accessBarChart"></canvas>
                         </div>
                     </div>
                 </div>
             </div>
+
+            <!-- Dedicated Waveform Row -->
+            <div class="waveform-row">
+                <div class="metric-card graylog-card full-width">
+                    <div class="card-header">
+                        <span class="card-label">Signal Waveforms</span>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="signalCanvas" height="200" style="width: 100%;"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Insight Row -->
+            <div class="insight-grid">
+                <div class="metric-card graylog-card tall">
+                    <div class="card-header">
+                        <span class="card-label">Access Timeline</span>
+                        <span class="pill live-pill">live</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-large">
+                            <canvas id="timelineChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="metric-card graylog-card tall">
+                    <div class="card-header">
+                        <span class="card-label">Power Mix</span>
+                        <div class="pill subtle">Stacked</div>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-large">
+                            <canvas id="powerStackedChart"></canvas>
+                        </div>
+                        <div class="legend-row">
+                            <span class="legend-chip" style="--chip-color:#5dade2">Static</span>
+                            <span class="legend-chip" style="--chip-color:#fdcb6e">Dynamic</span>
+                            <span class="legend-chip" style="--chip-color:#e17055">Penalty</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Main Visualization -->
             <div class="viz-container glass-panel">
                 <div class="panel-header">
@@ -380,7 +434,7 @@ s
 
                     <!-- Chart Container (Hidden by default if Grid is active) -->
                     <div id="chartContainer" class="chart-wrapper hidden">
-                        <canvas id="mainChart"></canvas>
+                        <canvas id="tabChart"></canvas>
                     </div>
 
                     <!-- Data Movement Viz -->
