@@ -2016,10 +2016,21 @@ const app = {
         const settingsPanel = document.getElementById('chatSettingsPanel');
         const saveKeyBtn = document.getElementById('saveKeyBtn');
         const keyInput = document.getElementById('geminiKey');
+        if (!widget) console.error('Missing: chatbotWidget');
+        if (!trigger) console.error('Missing: chatTrigger');
+        if (!closeBtn) console.error('Missing: closeChat');
+        if (!sendBtn) console.error('Missing: sendMessage');
+        if (!input) console.error('Missing: chatInput');
+        if (!settingsBtn) console.error('Missing: chatSettingsBtn');
+        if (!settingsPanel) console.error('Missing: chatSettingsPanel');
+        if (!saveKeyBtn) console.error('Missing: saveKeyBtn');
+        if (!keyInput) console.error('Missing: geminiKey');
+
         if (!widget || !trigger || !closeBtn || !sendBtn || !input || !settingsBtn || !settingsPanel || !saveKeyBtn || !keyInput) {
             console.warn('Chatbot UI missing elements; skipping init.');
             return;
         }
+        console.log('Chatbot initialized successfully.');
 
         // Load Key
         const savedKey = localStorage.getItem('gemini_api_key');
@@ -2100,9 +2111,10 @@ const app = {
 
     async getBotResponse(input) {
         const apiKey = localStorage.getItem('gemini_api_key');
+        const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
 
         // If no API key, use fallback regex bot
-        if (!apiKey) {
+        if (!apiKey || offline) {
             return this.getLocalBotResponse(input);
         }
 
@@ -2112,7 +2124,7 @@ const app = {
             return response;
         } catch (error) {
             console.warn("Gemini API failed, falling back to local bot:", error);
-            return this.getLocalBotResponse(input) + `\n\n(⚠️ API Error: ${error.message})`;
+            return this.getLocalBotResponse(input) + `\n\n(⚠️ Offline/Blocked: ${error.message})`;
         }
     },
 
