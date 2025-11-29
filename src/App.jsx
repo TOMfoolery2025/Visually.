@@ -12,6 +12,7 @@ import { LandingPage } from './components/Pages/LandingPage';
 import { DocumentationPage } from './components/Pages/DocumentationPage';
 import { LoginOverlay } from './components/Auth/LoginOverlay';
 import { Chatbot } from './components/Chatbot/Chatbot';
+import { HistoryPage } from './components/Pages/HistoryPage';
 
 function AuthenticatedApp() {
     const { isAuthenticated, logout } = useAuth();
@@ -23,25 +24,7 @@ function AuthenticatedApp() {
         document.documentElement.setAttribute('data-theme', theme);
     }, [theme]);
 
-    // Log page visits
-    useEffect(() => {
-        if (isAuthenticated) {
-            const path = location.pathname;
-            let action = 'Visited Page';
-            let details = path;
-
-            if (path === '/') details = 'Home';
-            else if (path === '/simulator') action = 'Opened Simulator';
-            else if (path === '/cpu') action = 'Inspected CPU';
-            else if (path === '/l1') action = 'Inspected L1 Cache';
-            else if (path === '/l2') action = 'Inspected L2 Cache';
-            else if (path === '/ram') action = 'Inspected RAM';
-            else if (path === '/theory') action = 'Reading Theory';
-            else if (path === '/docs') action = 'Reading Docs';
-
-            logAction(action, details);
-        }
-    }, [location.pathname, isAuthenticated]);
+    // Log page visits removed to focus on simulation history
 
     const toggleTheme = () => {
         setTheme(prev => prev === 'light' ? 'dark' : 'light');
@@ -62,6 +45,7 @@ function AuthenticatedApp() {
                 <Route path="/l2" element={<L1Page level="L2" />} />
                 <Route path="/ram" element={<RAMPage />} />
                 <Route path="/theory" element={<TheoryPage />} />
+                <Route path="/history" element={<HistoryPage />} />
             </Routes>
 
             <Chatbot />
@@ -71,9 +55,9 @@ function AuthenticatedApp() {
 
 function App() {
     return (
-        <AuthProvider>
+        <Router>
             <AuthenticatedApp />
-        </AuthProvider>
+        </Router>
     );
 }
 

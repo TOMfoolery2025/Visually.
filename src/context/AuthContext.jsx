@@ -8,14 +8,24 @@ export function AuthProvider({ children }) {
     const [isAuthenticated, setIsAuthenticated] = useState(!!token);
 
     useEffect(() => {
-        if (token) {
-            // Ideally verify token with backend, but for now trust local storage presence
-            // and decode if needed.
-            setIsAuthenticated(true);
-            const savedUser = localStorage.getItem('user');
-            if (savedUser) {
-                setUser(JSON.parse(savedUser));
+        try {
+            if (token) {
+                // Ideally verify token with backend, but for now trust local storage presence
+                // and decode if needed.
+                setIsAuthenticated(true);
+                const savedUser = localStorage.getItem('user');
+                if (savedUser) {
+                    setUser(JSON.parse(savedUser));
+                }
             }
+        } catch (error) {
+            console.error("Auth initialization error:", error);
+            // Clear corrupt state
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            setToken(null);
+            setUser(null);
+            setIsAuthenticated(false);
         }
     }, [token]);
 

@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
 import { CacheSimulator } from '../lib/simulator';
+import { useLogHistory } from './useLogHistory';
 
 export function useSimulator() {
     const simRef = useRef(new CacheSimulator(1024, 32, 1, 'LRU', { staticPower: 50, missPenaltyPower: 200 }, 1.0));
@@ -79,6 +80,8 @@ export function useSimulator() {
         return result;
     }, [updateState]);
 
+    const logAction = useLogHistory();
+
     const play = useCallback((lines, speed = 1000) => {
         if (isPlaying) return;
         setIsPlaying(true);
@@ -89,6 +92,29 @@ export function useSimulator() {
                 if (prev >= lines.length) {
                     clearInterval(playInterval.current);
                     setIsPlaying(false);
+
+                    // Log Simulation Result
+                    const finalStats = simRef.current.stats;
+                    const hitRate = finalStats.accesses > 0 ? ((finalStats.hits / finalStats.accesses) * 100).toFixed(2) : 0;
+
+                    const logData = {
+                        config: {
+                            cacheSize: simRef.current.cacheSize,
+                            blockSize: simRef.current.blockSize,
+                            associativity: simRef.current.associativity,
+                            replacementPolicy: simRef.current.replacementPolicy
+                        },
+                        results: {
+                            instructions: lines.length,
+                            hitRate: `${hitRate}%`,
+                            hits: finalStats.hits,
+                            misses: finalStats.misses,
+                            accesses: finalStats.accesses
+                        }
+                    };
+
+                    logAction('Simulation Run', JSON.stringify(logData));
+
                     return prev;
                 }
                 const line = lines[prev];
@@ -103,7 +129,7 @@ export function useSimulator() {
             });
             updateState();
         }, speed);
-    }, [isPlaying, updateState]);
+    }, [isPlaying, updateState, logAction]);
 
     const pause = useCallback(() => {
         clearInterval(playInterval.current);

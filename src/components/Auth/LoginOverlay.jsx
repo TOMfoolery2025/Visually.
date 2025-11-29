@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { Eye, EyeOff, Check, X as XIcon } from 'lucide-react';
 
 export function LoginOverlay() {
     const { login, register, loginGuest } = useAuth();
@@ -8,9 +9,31 @@ export function LoginOverlay() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [confirm, setConfirm] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState('');
     const [successMsg, setSuccessMsg] = useState('');
     const [loading, setLoading] = useState(false);
+
+    // Password Validation State
+    const [pwdValid, setPwdValid] = useState({
+        length: false,
+        number: false,
+        special: false
+    });
+
+    useEffect(() => {
+        setPwdValid({
+            length: password.length >= 8,
+            number: /\d/.test(password),
+            special: /[!@#$%^&*(),.?":{}|<>]/.test(password)
+        });
+    }, [password]);
+
+    const isPasswordValid = () => pwdValid.length && pwdValid.number && pwdValid.special;
+
+    const validateEmail = (email) => {
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    };
 
     const handleSubmit = async () => {
         setError('');
@@ -32,13 +55,18 @@ export function LoginOverlay() {
                 setLoading(false);
                 return;
             }
-            if (password !== confirm) {
-                setError('Passwords do not match');
+            if (!validateEmail(email)) {
+                setError('Please enter a valid email address');
                 setLoading(false);
                 return;
             }
-            if (password.length < 8) {
-                setError('Password must be at least 8 characters');
+            if (!isPasswordValid()) {
+                setError('Password does not meet requirements');
+                setLoading(false);
+                return;
+            }
+            if (password !== confirm) {
+                setError('Passwords do not match');
                 setLoading(false);
                 return;
             }
@@ -69,7 +97,7 @@ export function LoginOverlay() {
                     {/* Login Form Section (left) */}
                     <div className="login-pane flex flex-col justify-center p-8 md:p-12 bg-white dark:bg-gray-900">
                         <div className="login-header text-center mb-8">
-                            <img src="/tum.png" alt="Visually. Logo" className="h-12 mx-auto mb-4 drop-shadow-md" />
+                            <img src="/tum.png" alt="Visually. Logo" className="h-16 mx-auto mb-4 drop-shadow-md object-contain" />
                             <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">Welcome to Visually.</h2>
                             <p className="subtitle text-sm text-gray-500 dark:text-gray-400 font-medium">Sign in to continue</p>
                         </div>
@@ -122,26 +150,50 @@ export function LoginOverlay() {
                                 </div>
                             )}
 
-                            <div className="input-group password-row">
+                            <div className="input-group password-row relative">
                                 <input
-                                    type="password"
+                                    type={showPassword ? "text" : "password"}
                                     placeholder="Password"
-                                    className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-tum-blue/50 focus:border-tum-blue outline-none transition-all placeholder-gray-400"
+                                    className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-tum-blue/50 focus:border-tum-blue outline-none transition-all placeholder-gray-400 pr-10"
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
                                 />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                                >
+                                    {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                                </button>
                             </div>
 
                             {mode === 'register' && (
-                                <div className="input-group confirm-group">
-                                    <input
-                                        type="password"
-                                        placeholder="Confirm Password"
-                                        className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-tum-blue/50 focus:border-tum-blue outline-none transition-all placeholder-gray-400"
-                                        value={confirm}
-                                        onChange={(e) => setConfirm(e.target.value)}
-                                    />
-                                </div>
+                                <>
+                                    <div className="text-xs space-y-1 px-1">
+                                        <p className={`flex items-center gap-2 ${pwdValid.length ? 'text-green-600' : 'text-gray-400'}`}>
+                                            {pwdValid.length ? <Check size={12} /> : <div className="w-3 h-3 rounded-full border border-gray-400" />}
+                                            At least 8 characters
+                                        </p>
+                                        <p className={`flex items-center gap-2 ${pwdValid.number ? 'text-green-600' : 'text-gray-400'}`}>
+                                            {pwdValid.number ? <Check size={12} /> : <div className="w-3 h-3 rounded-full border border-gray-400" />}
+                                            Contains a number
+                                        </p>
+                                        <p className={`flex items-center gap-2 ${pwdValid.special ? 'text-green-600' : 'text-gray-400'}`}>
+                                            {pwdValid.special ? <Check size={12} /> : <div className="w-3 h-3 rounded-full border border-gray-400" />}
+                                            Contains a special character
+                                        </p>
+                                    </div>
+
+                                    <div className="input-group confirm-group">
+                                        <input
+                                            type="password"
+                                            placeholder="Confirm Password"
+                                            className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-tum-blue/50 focus:border-tum-blue outline-none transition-all placeholder-gray-400"
+                                            value={confirm}
+                                            onChange={(e) => setConfirm(e.target.value)}
+                                        />
+                                    </div>
+                                </>
                             )}
 
                             <button

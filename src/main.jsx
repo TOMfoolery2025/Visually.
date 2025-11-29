@@ -11,12 +11,18 @@ import { Chart as ChartJS, ArcElement, CategoryScale, LinearScale, BarElement, P
 // Register ChartJS components globally
 ChartJS.register(ArcElement, CategoryScale, LinearScale, BarElement, PointElement, LineElement, Title, Tooltip, Legend, Filler);
 
+import { AuthProvider } from './context/AuthContext';
+
+// ... imports
+
 ReactDOM.createRoot(document.getElementById('root')).render(
     <React.StrictMode>
-        <SimulatorProvider>
-            <TooltipProvider>
-                <App />
-            </TooltipProvider>
-        </SimulatorProvider>
+        <AuthProvider>
+            <SimulatorProvider>
+                <TooltipProvider>
+                    <App />
+                </TooltipProvider>
+            </SimulatorProvider>
+        </AuthProvider>
     </React.StrictMode>,
 )
