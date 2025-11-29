@@ -50,12 +50,17 @@ export function AuthProvider({ children }) {
             const data = await res.json();
             if (!res.ok) throw new Error(data.error);
 
-            // Auto login after register? Or ask to login.
-            // Let's return success and let UI handle it.
             return { success: true };
         } catch (err) {
             return { success: false, error: err.message };
         }
+    };
+
+    const loginGuest = () => {
+        const guestUser = { username: 'Guest', isGuest: true };
+        setUser(guestUser);
+        setIsAuthenticated(true);
+        // Do not save token for guest
     };
 
     const logout = () => {
@@ -67,7 +72,7 @@ export function AuthProvider({ children }) {
     };
 
     return (
-        <AuthContext.Provider value={{ user, isAuthenticated, login, register, logout, token }}>
+        <AuthContext.Provider value={{ user, isAuthenticated, login, register, loginGuest, logout, token }}>
             {children}
         </AuthContext.Provider>
     );

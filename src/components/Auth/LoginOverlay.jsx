@@ -2,17 +2,19 @@ import { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 
 export function LoginOverlay() {
-    const { login, register } = useAuth();
+    const { login, register, loginGuest } = useAuth();
     const [mode, setMode] = useState('login');
     const [username, setUsername] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [confirm, setConfirm] = useState('');
     const [error, setError] = useState('');
+    const [successMsg, setSuccessMsg] = useState('');
     const [loading, setLoading] = useState(false);
 
     const handleSubmit = async () => {
         setError('');
+        setSuccessMsg('');
         setLoading(true);
 
         if (mode === 'login') {
@@ -44,7 +46,9 @@ export function LoginOverlay() {
             const result = await register(username, email, password);
             if (result.success) {
                 setMode('login');
-                setError('Registration successful! Please login.');
+                setSuccessMsg('Registration successful! Please login with your new account.');
+                setPassword(''); // Clear password
+                setConfirm('');
                 setLoading(false);
                 return;
             } else {
@@ -55,15 +59,7 @@ export function LoginOverlay() {
     };
 
     const handleGuest = () => {
-        // Guest login logic if needed, or just bypass
-        // For now, let's treat guest as a special user or just hide overlay
-        // But since AuthContext controls "isAuthenticated", we might need a guest mode there.
-        // For simplicity, let's just log them in as "guest" locally without backend
-        // Or we can just use a dummy guest account.
-        // Let's assume the user wants real auth.
-        // We can add a "guest" login to the backend or handle it client side.
-        // Let's just alert for now that Guest is limited.
-        alert("Guest mode is currently limited. Please register for full features.");
+        loginGuest();
     };
 
     return (
@@ -73,7 +69,7 @@ export function LoginOverlay() {
                     {/* Login Form Section (left) */}
                     <div className="login-pane flex flex-col justify-center p-8 md:p-12 bg-white dark:bg-gray-900">
                         <div className="login-header text-center mb-8">
-                            <img src="/tum_logo.png" alt="Visually. Logo" className="h-12 mx-auto mb-4 drop-shadow-md" />
+                            <img src="/tum.png" alt="Visually. Logo" className="h-12 mx-auto mb-4 drop-shadow-md" />
                             <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">Welcome to Visually.</h2>
                             <p className="subtitle text-sm text-gray-500 dark:text-gray-400 font-medium">Sign in to continue</p>
                         </div>
@@ -81,13 +77,13 @@ export function LoginOverlay() {
                         <div className="login-tabs grid grid-cols-2 gap-2 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl mb-6">
                             <button
                                 className={`tab-btn py-2.5 text-sm font-bold rounded-lg transition-all duration-200 ${mode === 'login' ? 'active text-tum-blue bg-white shadow-sm dark:bg-gray-700 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}`}
-                                onClick={() => { setMode('login'); setError(''); }}
+                                onClick={() => { setMode('login'); setError(''); setSuccessMsg(''); }}
                             >
                                 Login
                             </button>
                             <button
                                 className={`tab-btn py-2.5 text-sm font-bold rounded-lg transition-all duration-200 ${mode === 'register' ? 'active text-tum-blue bg-white shadow-sm dark:bg-gray-700 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}`}
-                                onClick={() => { setMode('register'); setError(''); }}
+                                onClick={() => { setMode('register'); setError(''); setSuccessMsg(''); }}
                             >
                                 Register
                             </button>
@@ -97,6 +93,11 @@ export function LoginOverlay() {
                             {error && (
                                 <div className="p-3 text-sm text-red-500 bg-red-100 dark:bg-red-900/30 rounded-lg text-center">
                                     {error}
+                                </div>
+                            )}
+                            {successMsg && (
+                                <div className="p-3 text-sm text-green-600 bg-green-100 dark:bg-green-900/30 rounded-lg text-center font-medium">
+                                    {successMsg}
                                 </div>
                             )}
                             <div className="input-group">
