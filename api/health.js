@@ -14,7 +14,7 @@ export default async function handler(req, res) {
         res.status(200).json({
             status: 'ok',
             env: {
-                DATABASE_URL: hasDbUrl ? 'Set' : 'MISSING',
+                DATABASE_URL: hasDbUrl ? `Set (starts with ${process.env.DATABASE_URL.substring(0, 15)}...)` : 'MISSING',
                 JWT_SECRET: hasJwtSecret ? 'Set' : 'MISSING'
             },
             database: {

@@ -47,11 +47,20 @@ export function AuthProvider({ children }) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, email, password })
             });
+
+            const contentType = res.headers.get("content-type");
+            if (!contentType || !contentType.includes("application/json")) {
+                const text = await res.text();
+                console.error("Non-JSON response:", text);
+                throw new Error("Server returned non-JSON response. Check console for details.");
+            }
+
             const data = await res.json();
             if (!res.ok) throw new Error(data.error);
 
             return { success: true };
         } catch (err) {
+            console.error("Registration failed:", err);
             return { success: false, error: err.message };
         }
     };
