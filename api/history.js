@@ -4,32 +4,41 @@ import query from './db.js';
 // Helper to verify token
 const verifyToken = (req) => {
     const authHeader = req.headers.authorization;
+    console.log('Auth Header:', authHeader ? 'Present' : 'Missing');
     if (!authHeader) return null;
 
     const token = authHeader.split(' ')[1];
     try {
-        return jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret_do_not_use_in_prod');
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret_do_not_use_in_prod');
+        console.log('Token verified for user:', decoded.userId);
+        return decoded;
     } catch (err) {
+        console.error('Token verification failed:', err.message);
         return null;
     }
 };
 
 export default async function handler(req, res) {
+    console.log(`History API called: ${req.method}`);
+
     const user = verifyToken(req);
     if (!user || !user.userId) {
+        console.log('Unauthorized access attempt');
         return res.status(401).json({ error: 'Unauthorized' });
     }
 
     if (req.method === 'GET') {
+        console.log('Fetching history for user:', user.userId);
         try {
             const result = await query(
                 'SELECT * FROM history WHERE user_id = $1 ORDER BY timestamp DESC LIMIT 50',
                 [user.userId]
             );
+            console.log(`Found ${result.rows.length} history items`);
             res.status(200).json(result.rows);
         } catch (error) {
             console.error('Fetch history error:', error);
-            res.status(500).json({ error: 'Failed to fetch history' });
+            res.status(500).json({ error: 'Failed to fetch history: ' + error.message });
         }
     } else if (req.method === 'POST') {
         console.log('History POST received');
