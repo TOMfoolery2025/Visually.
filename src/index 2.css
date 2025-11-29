@@ -1,0 +1,149 @@
+@import "tailwindcss";
+
+:root {
+  /* Light Theme - Professional Gray/Slate */
+  --bg-color: #f1f5f9;
+  /* Slate-100 */
+  --surface-1: #ffffff;
+  --surface-2: #f8fafc;
+  /* Slate-50 */
+  --surface-strong: #e2e8f0;
+  /* Slate-200 */
+  --border-color: #cbd5e1;
+  /* Slate-300 */
+
+  --text-primary: #0f172a;
+  /* Slate-900 */
+  --text-secondary: #475569;
+  /* Slate-600 */
+  --text-muted: #94a3b8;
+  /* Slate-400 */
+
+  --accent-color: #2563eb;
+  /* Blue-600 */
+  --accent-hover: #1d4ed8;
+  /* Blue-700 */
+  --accent-light: #eff6ff;
+  /* Blue-50 */
+
+  --success-color: #10b981;
+  /* Emerald-500 */
+  --warning-color: #f59e0b;
+  /* Amber-500 */
+  --danger-color: #ef4444;
+  /* Red-500 */
+  --info-color: #3b82f6;
+  /* Blue-500 */
+
+  /* Chart Colors - Professional Palette */
+  --chart-hit: #10b981;
+  --chart-miss: #ef4444;
+  --chart-static: #3b82f6;
+  --chart-dynamic: #f59e0b;
+  --chart-penalty: #ef4444;
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+}
+
+[data-theme="dark"] {
+  /* Dark Theme - Deep Slate/Graylog Style */
+  --bg-color: #0f172a;
+  /* Slate-900 */
+  --surface-1: #1e293b;
+  /* Slate-800 */
+  --surface-2: #334155;
+  /* Slate-700 */
+  --surface-strong: #475569;
+  /* Slate-600 */
+  --border-color: #334155;
+  /* Slate-700 */
+
+  --text-primary: #f8fafc;
+  /* Slate-50 */
+  --text-secondary: #cbd5e1;
+  /* Slate-300 */
+  --text-muted: #64748b;
+  /* Slate-500 */
+
+  --accent-color: #3b82f6;
+  /* Blue-500 */
+  --accent-hover: #60a5fa;
+  /* Blue-400 */
+  --accent-light: #1e3a8a;
+  /* Blue-900 */
+
+  --success-color: #34d399;
+  /* Emerald-400 */
+  --warning-color: #fbbf24;
+  /* Amber-400 */
+  --danger-color: #f87171;
+  /* Red-400 */
+}
+
+@layer base {
+  body {
+    @apply font-sans bg-[color:var(--bg-color)] text-[color:var(--text-primary)] min-h-screen overflow-x-hidden text-sm transition-colors duration-200;
+  }
+}
+
+@layer utilities {
+
+  /* Professional Card Style - No Glassmorphism */
+  .glass-panel {
+    @apply bg-[color:var(--surface-1)] border border-[color:var(--border-color)] rounded-lg shadow-[var(--shadow-sm)];
+  }
+
+  /* Input Fields */
+  .glass-input {
+    @apply bg-[color:var(--surface-2)] border border-[color:var(--border-color)] rounded px-3 py-2 text-[color:var(--text-primary)] text-sm focus:outline-none focus:border-[color:var(--accent-color)] focus:ring-1 focus:ring-[color:var(--accent-color)] transition-all placeholder:text-[color:var(--text-muted)];
+  }
+
+  /* Buttons */
+  .btn-primary {
+    @apply bg-[color:var(--accent-color)] text-white font-medium py-2 px-4 rounded shadow-sm hover:bg-[color:var(--accent-hover)] active:translate-y-[1px] transition-all flex items-center justify-center gap-2 text-sm;
+  }
+
+  .btn-secondary {
+    @apply bg-[color:var(--surface-1)] text-[color:var(--text-primary)] font-medium py-2 px-4 rounded border border-[color:var(--border-color)] hover:bg-[color:var(--surface-2)] active:translate-y-[1px] transition-all flex items-center justify-center gap-2 text-sm;
+  }
+
+  /* Custom Scrollbar - Slim & Subtle */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: var(--surface-strong);
+    border-radius: 3px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+  }
+}
+
+/* Typography Overrides */
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+
+code,
+.font-mono {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}

@@ -1748,6 +1748,7 @@ td {
     height: 100%;
     min-height: 300px;
     padding: 40px;
+    position: relative;
 }
 
 .data-movement.hidden {
@@ -1763,6 +1764,7 @@ td {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
     position: relative;
     z-index: 2;
+    text-align: center;
 }
 
 .cpu {
@@ -1784,17 +1786,20 @@ td {
     position: relative;
     border-radius: 5px;
     max-width: 150px;
+    overflow: hidden;
 }
 
-.arrow {
-    width: 20px;
-    height: 20px;
-    background: var(--text-primary);
-    border-radius: 50%;
+.flow-line {
     position: absolute;
-    top: -5px;
-    left: 0;
+    inset: 0;
+    background: linear-gradient(90deg, rgba(48, 112, 179, 0), rgba(48, 112, 179, 0.9), rgba(0, 206, 201, 0));
+    transform: translateX(-100%);
     opacity: 0;
+}
+
+.flow-line.active {
+    animation: flowPulse 1.2s ease forwards;
+    opacity: 1;
 }
 
 @keyframes moveRight {
@@ -1827,6 +1832,16 @@ td {
 
 .anim-left {
     animation: moveLeft 1s ease forwards;
+}
+
+@keyframes flowPulse {
+    0% {
+        transform: translateX(-100%);
+    }
+
+    100% {
+        transform: translateX(100%);
+    }
 }
 
 /* SPA Views */
