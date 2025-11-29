@@ -21,6 +21,11 @@ const verifyToken = (req) => {
 export default async function handler(req, res) {
     console.log(`History API called: ${req.method}`);
 
+    // Disable caching to ensure fresh history is always fetched
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+
     const user = verifyToken(req);
     if (!user || !user.userId) {
         console.log('Unauthorized access attempt');
