@@ -16,7 +16,7 @@ const verifyToken = (req) => {
 
 export default async function handler(req, res) {
     const user = verifyToken(req);
-    if (!user) {
+    if (!user || !user.userId) {
         return res.status(401).json({ error: 'Unauthorized' });
     }
 
@@ -32,7 +32,19 @@ export default async function handler(req, res) {
             res.status(500).json({ error: 'Failed to fetch history' });
         }
     } else if (req.method === 'POST') {
-        const { action, details } = req.body;
+        let body = req.body;
+        // Robust parsing for Vercel serverless environment
+        if (typeof body === 'string') {
+            try {
+                body = JSON.parse(body);
+            } catch (e) {
+                console.error('Failed to parse body:', e);
+                return res.status(400).json({ error: 'Invalid JSON body' });
+            }
+        }
+
+        const { action, details } = body || {};
+
         if (!action) {
             return res.status(400).json({ error: 'Action is required' });
         }
