@@ -32,7 +32,12 @@ export default async function handler(req, res) {
             res.status(500).json({ error: 'Failed to fetch history' });
         }
     } else if (req.method === 'POST') {
+        console.log('History POST received');
         let body = req.body;
+
+        console.log('Raw body type:', typeof body);
+        console.log('Raw body:', body);
+
         // Robust parsing for Vercel serverless environment
         if (typeof body === 'string') {
             try {
@@ -44,6 +49,7 @@ export default async function handler(req, res) {
         }
 
         const { action, details } = body || {};
+        console.log('Parsed action:', action);
 
         if (!action) {
             return res.status(400).json({ error: 'Action is required' });
@@ -54,10 +60,11 @@ export default async function handler(req, res) {
                 'INSERT INTO history (user_id, action, details) VALUES ($1, $2, $3) RETURNING *',
                 [user.userId, action, details || '']
             );
+            console.log('Insert success:', result.rows[0].id);
             res.status(201).json(result.rows[0]);
         } catch (error) {
             console.error('Log history error:', error);
-            res.status(500).json({ error: 'Failed to log history' });
+            res.status(500).json({ error: 'Failed to log history: ' + error.message });
         }
     } else {
         res.status(405).json({ error: 'Method not allowed' });
